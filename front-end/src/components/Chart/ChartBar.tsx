@@ -14,6 +14,7 @@ import type {
     GridComponentOption,
     DatasetComponentOption,
 } from "echarts/components";
+import { useEffect } from 'react';
 
 type ECOption = ComposeOption<
     | BarSeriesOption
@@ -25,15 +26,23 @@ type ECOption = ComposeOption<
 >;
 
 interface Props {
-    axis: string[]
-    data: number[]
-    currency: boolean
+    axis: string[];
+    data: any;
+    currency: boolean;
 }
 
 export default function ChartBar({ axis, data, currency }: Props) {
 
+    useEffect(() => {
+        // console.log(axis)
+        // console.log(data)
+    }, [])
+
     const options: ECOption = {
         tooltip: {
+            show: true
+        },
+        legend: {
             show: true
         },
         grid: {
@@ -48,16 +57,7 @@ export default function ChartBar({ axis, data, currency }: Props) {
         yAxis: {
             type: 'value'
         },
-        series: [
-            {
-                data: data,
-                type: 'bar',
-                label: {
-                    show: true,
-                    formatter: `${currency ? "R$" : ""} {c}`
-                }
-            }
-        ]
+        series: data
     }
 
     return (

@@ -101,13 +101,13 @@ export default function Home() {
   const [fieldDetailSelected, setFieldDetailSelected] = useState<any>(null);
 
   const [dataTable, setDataTable] = useState<any>([])
-  const [dataGraph, setDataGraph] = useState<number[]>([])
+  const [dataGraph, setDataGraph] = useState<any>(null)
   const [columnTable, setColumnsTable] = useState<ColumnTable[]>([])
   const [axisGraph, setAxisGraph] = useState<string[]>([])
 
   const [optionTableChart, setOptionTableChart] = useState<string>("table")
 
-  const [total, setTotal] = useState<number>(0)
+  const [total, setTotal] = useState<any>({})
   const [currency, setCurrency] = useState<boolean>(false)
 
   const { data, isLoading } = useHttpGetDataProducts(currentFontData)
@@ -117,10 +117,10 @@ export default function Home() {
   }, [data]);
 
   useEffect(() => {
-    console.log(fieldsView)
-    console.log(fieldViewSelected)
-    const details = fieldsView.filter((field) => fieldViewSelected.key !== field.key)
-    setFieldsDetail(details)
+    if (fieldViewSelected) {
+      const details = fieldsView.filter((field) => fieldViewSelected.key !== field.key)
+      setFieldsDetail(details)
+    }
   }, [fieldViewSelected]);
 
   const splitValueDetail = (data: any) => {
@@ -131,10 +131,15 @@ export default function Home() {
     const view: KeyType[] = [];
 
     keys.forEach((key) => {
-      typeof obj[key] === "string" ? view.push({ key: key, label: Capitalize(key) }) : key !== "id" && total.push({
-        key: key,
-        label: Capitalize(key).replace("_", " "),
-      });
+      if ((typeof obj[key] === "string" && key !== "id") || (key === "ano" || key === "mes")) {
+        view.push({ key: key, label: Capitalize(key) })
+      }
+
+      if ((typeof obj[key] === "number" && key !== "id")) {
+        if (key !== 'ano' && key !== 'mes') {
+          total.push({ key: key, label: Capitalize(key).replace("_", " ") })
+        }
+      }
     });
 
     setFieldsTotal(total);
@@ -164,16 +169,110 @@ export default function Home() {
   };
 
   const generateData = () => {
+    setCurrency(checkType(fieldTotalSelected["key"]))
+    if (fieldDetailSelected !== null) {
+      generateDataWithDetail()
+    } else {
+      generateDataWithoutDetail()
+    }
+  }
+
+  const generateDataWithDetail = () => {
+    const view = fieldViewSelected['key']
+    const total = fieldTotalSelected["key"]
+    const detail = fieldDetailSelected['key']
+
     const newData: any = data?.map((item: any) => {
-      const view = fieldViewSelected['key']
-      const total = fieldTotalSelected["key"]
+      return {
+        [view]: item[view],
+        [total]: item[total],
+        [detail]: item[detail],
+        [item[detail]]: item[total]
+      }
+    }).reduce((acc: any, arr: any) => {
+      const includeView = acc?.some((item: any) => item[view] === arr[view])
+      if (!includeView) {
+        return [
+          ...acc,
+          arr
+        ]
+      }
+      return [...acc.map((item: any) => (item[view] === arr[view] ? {
+        ...item,
+        [total]: item[total] += arr[total],
+        [arr[detail]]: arr[total],
+      } : item
+      ))]
+    }, []);
+
+
+    setDataTable(newData)
+
+    const keys = data?.map((item: any) => {
+      return item[detail]
+    })
+
+    const detailsKeys = [...new Set(keys)].map((item, index) => {
+      return {
+        key: item + index,
+        field: item,
+        header: item,
+      }
+    })
+
+    setColumnsTable(
+      [{
+        key: view,
+        field: view,
+        header: view,
+      },
+      ...detailsKeys]
+    )
+
+    let totals = data?.reduce((acc: any, arr: any) => {
+      if (!acc[arr[detail]]) {
+        acc[arr[detail]] = 0;
+      }
+      acc[arr[detail]] += arr[total];
+      return acc;
+    }, {});
+
+    setTotal(totals)
+
+    const axisGraphMap = data?.map((axis: any) => axis[fieldViewSelected['key']])
+    const axisGraph = [...new Set(axisGraphMap)]
+    setAxisGraph(axisGraph!)
+
+    const dataGraph = detailsKeys.map((arr: any) => {
+      return {
+        name: arr.field,
+        type: 'bar',
+        stack: 'total',
+        barWidth: '60%',
+        label: {
+          show: true
+        },
+        data: axisGraph?.map((item: any) => {
+          const filtered: any = data?.filter((d: any) => {
+            return item === d[view] && arr.field === d[detail]
+          })[0]
+          return filtered ? filtered[total] : null
+        })
+      }
+    }, [])
+    setDataGraph(dataGraph)
+  }
+
+  const generateDataWithoutDetail = () => {
+    const view = fieldViewSelected['key']
+    const total = fieldTotalSelected["key"]
+    const newData: any = data?.map((item: any) => {
+
       return {
         [view]: item[view],
         [total]: item[total],
       }
     }).reduce((acc: any, arr: any) => {
-      const view = fieldViewSelected['key']
-      const total = fieldTotalSelected["key"]
 
       const includeView = acc?.some((item: any) => item[view] === arr[view])
 
@@ -183,21 +282,22 @@ export default function Home() {
           arr
         ]
       }
-      return [...acc.map((a: any) => {
-        return a[view] === arr[view] ? { [view]: arr[view], [total]: a[total] += arr[total] } : a
+      return [...acc.map((item: any) => {
+        return item[view] === arr[view] ? { [view]: arr[view], [total]: item[total] += arr[total] } : item
       })]
 
     }, []);
-
-    console.log(newData)
     setDataTable(newData)
 
-    const total = data?.reduce((acc: number, arr: any) => {
+    const totalGeneral = data?.reduce((acc: number, arr: any) => {
       return acc + arr[fieldTotalSelected!['key']]
     }, 0)
 
-    setTotal(total!)
-    setCurrency(checkType(fieldTotalSelected["key"]))
+    setTotal(
+      {
+        [fieldTotalSelected!['key']]: totalGeneral
+      }
+    )
 
     const keys = Object.keys(newData![0])?.map((key: any, index: number) => {
       return {
@@ -212,23 +312,27 @@ export default function Home() {
     setAxisGraph(axisGraph!)
 
     const dataGraph = newData?.map((axis: any) => axis[fieldTotalSelected['key']])
-    setDataGraph(dataGraph!)
+    setDataGraph([{ name: fieldViewSelected['key'], type: 'bar', data: dataGraph }])
   }
 
-  const footerGroup = (
-    <ColumnGroup>
+  const footerGroup = () => {
+    const objKeys = Object?.keys(total)
+    return <ColumnGroup>
       <Row>
         <Column footer="Total:" />
-        <Column footer={`${currency ? "R$" : ""} ${total}`} />
+        {
+          objKeys.map((item, index) => (
+            <Column key={item + index} footer={`${currency ? "R$" : ""} ${total[item]}`} />
+          ))
+        }
       </Row>
     </ColumnGroup>
-  )
-
+  }
 
   const getTableChart = () => {
     switch (optionTableChart) {
       case "table":
-        return <DataTable value={dataTable} footerColumnGroup={footerGroup} tableStyle={{ minWidth: '50rem' }}>
+        return <DataTable value={dataTable} footerColumnGroup={footerGroup()} tableStyle={{ minWidth: '50rem' }}>
           {
             columnTable.map((column) => (
               <Column key={column.key} field={column.field} header={column.header} body={template}></Column>
@@ -242,12 +346,12 @@ export default function Home() {
 
   const template = (item: any, option: any) => {
     if (checkType(option.field)) return <> R$ {item[option.field]}</>
-    return <>{item[option.field]}</>
+    return <>{item[option.field] ? item[option.field] : "-"}</>
   }
 
   return (
     <div className="bg-white m-3 py-5 px-3" style={styles.home}>
-      <div className="flex gap-2">
+      <div className="flex flex-column md:flex-row gap-2">
         <FloatLabel>
           <Dropdown
             inputId="fontData"
@@ -258,7 +362,7 @@ export default function Home() {
             options={fontList}
             optionLabel="name"
             optionValue="id"
-            className="w-full sm:w-16rem md:w-20rem"
+            className="w-full md:w-13rem lg:w-18rem"
             placeholder="Fonte de dados"
           />
           <label htmlFor="fontData">Fonte de dados</label>
@@ -272,7 +376,7 @@ export default function Home() {
             optionLabel="label"
             options={fieldsTotal}
             loading={isLoading}
-            className="w-full sm:w-16rem md:w-20rem"
+            className="w-full md:w-13rem lg:w-20rem"
             placeholder="Soma / Totalização"
           />
           <label htmlFor="sumTotal">Soma / Totalização</label>
@@ -285,7 +389,7 @@ export default function Home() {
             onChange={(e) => setFieldViewSelected(e.value)}
             options={fieldsView}
             loading={isLoading}
-            className="w-full sm:w-16rem md:w-20rem"
+            className="w-full md:w-13rem lg:w-20rem"
             placeholder="Visualizar por"
           />
           <label htmlFor="viewBy">Visualizar por</label>
@@ -298,7 +402,7 @@ export default function Home() {
             onChange={(e) => setFieldDetailSelected(e.value)}
             options={fieldsDetails}
             loading={isLoading}
-            className="w-full sm:w-16rem md:w-20rem"
+            className="w-full md:w-13rem lg:w-20rem"
             placeholder="Detalhar por"
           />
           <label htmlFor="viewBy">Detalhar por</label>
